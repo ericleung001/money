@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google Sheet 記帳 (30日制)</title>
+    <title>Google Sheet 記帳 (13日制)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -33,7 +33,7 @@
         .income { color: var(--success); } .expense { color: var(--danger); }
 
         /* 表單與按鈕 */
-        input, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        input, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
         .btn { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         .btn-group { display: flex; gap: 10px; margin-bottom: 15px; }
         .btn-outline { background: white; border: 1px solid var(--primary); color: var(--primary); }
@@ -46,7 +46,7 @@
 <body>
 
 <div class="container">
-    <h2 style="text-align:center">☁️ 13日制記帳 (自動同步)</h2>
+    <h2 style="text-align:center">☁️ 一個月制記帳 (自動同步)</h2>
     
     <div class="status-bar">
         <span id="statusText">準備就緒</span>
@@ -86,10 +86,21 @@
             <input type="date" id="date">
         </div>
         <input type="number" id="amount" placeholder="金額" inputmode="decimal">
-        <input type="text" id="category" placeholder="分類 (如: 午餐)" list="catList">
-        <datalist id="catList">
-            <option value="膳食"><option value="交通"><option value="購物"><option value="娛樂"><option value="居住"><option value="家用"><option value="薪金"><option value="超市"><option value="日常用品"><option value="其他">
-        </datalist>
+        
+        <select id="category">
+            <option value="" disabled selected>請選擇分類</option>
+            <option value="膳食">膳食</option>
+            <option value="交通">交通</option>
+            <option value="購物">購物</option>
+            <option value="娛樂">娛樂</option>
+            <option value="居住">居住</option>
+            <option value="家用">家用</option>
+            <option value="薪金">薪金</option>
+            <option value="超市">超市</option>
+            <option value="日常用品">日常用品</option>
+            <option value="其他">其他</option>
+        </select>
+
         <button class="btn" onclick="addTransaction()">新增並上傳</button>
     </div>
 
@@ -197,6 +208,7 @@
         updateUI();
         
         document.getElementById('amount').value = '';
+        // 重置分類為預設值
         document.getElementById('category').value = '';
 
         await saveToGoogle();
