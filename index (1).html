@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Sheet 記帳 (13日制)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --bg: #f3f4f6;
+            --card: #ffffff;
+            --text: #333;
+        }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); padding: 20px; color: var(--text); }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        
+        /* 狀態列 */
+        .status-bar { 
+            background: #e0f2fe; color: #0369a1; padding: 10px; 
+            border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; 
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .loading { opacity: 0.6; pointer-events: none; }
+
+        /* 儀表板 */
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center; }
+        .stat-box { background: #f8fafc; padding: 10px; border-radius: 8px; }
+        .big-stat { grid-column: 1 / -1; background: #eff6ff; border: 1px solid #dbeafe; }
+        .stat-val { font-size: 1.2rem; font-weight: bold; }
+        .income { color: var(--success); } .expense { color: var(--danger); }
+
+        /* 表單與按鈕 */
+        input, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        .btn-outline { background: white; border: 1px solid var(--primary); color: var(--primary); }
+        
+        /* 列表 */
+        .list-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; align-items: center; }
+        .del-btn { color: #999; margin-left: 10px; cursor: pointer; }
+
+        /* 設定區塊 */
+        .settings-toggle { text-align: center; margin-bottom: 10px; font-size: 0.8rem; color: #666; cursor: pointer; text-decoration: underline; }
+        #settingsArea { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align:center">☁️ 13日制記帳 (Google同步版)</h2>
+    
+    <div class="status-bar">
+        <span id="statusText">準備就緒 (本機模式)</span>
+        <span id="loadingIcon" style="display:none">⏳</span>
+    </div>
+
+    <div class="settings-toggle" onclick="toggleSettings()">⚙️ 設定 Google Sheet連結</div>
+    <div class="card" id="settingsArea">
+        <label>Google Apps Script 網址 (Web App URL)</label>
+        <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/AKfycbxgchVQcYddNaTR8hbVF2cr2CMJRvOHP2BMUKETFSHVVPPcsMl3v5JoCplYo1LirZkP/exec" onchange="saveUrl()">
+        <small style="color:#666">貼上後會自動儲存於瀏覽器。</small>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-outline" onclick="loadFromGoogle()">📥 從雲端下載</button>
+        <button class="btn btn-outline" onclick="saveToGoogle()">☁️ 強制上傳</button>
+    </div>
+
+    <div class="period-info" style="text-align:center; margin-bottom:15px; color:#666; font-size:0.9rem" id="periodDisplay"></div>
+
+    <div class="card dashboard">
+        <div class="stat-box big-stat">
+            <div style="font-size:0.85rem; color:#64748b">每日可用</div>
+            <div class="stat-val" id="dailyBudget">$0</div>
+            <div style="font-size:0.85rem; margin-top:5px">剩 <span id="daysLeft">0</span> 天</div>
+        </div>
+        <div class="stat-box">
+            <div style="font-size:0.85rem">總收入</div>
+            <div class="stat-val income" id="totalIncome">$0</div>
+        </div>
+        <div class="stat-box">
+            <div style="font-size:0.85rem">總支出</div>
+            <div class="stat-val expense" id="totalExpense">$0</div>
+        </div>
+        <div class="stat-box" style="grid-column: 1/-1">
+            <div style="font-size:0.85rem">剩餘預算</div>
+            <div class="stat-val" id="balance">$0</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="display:grid; grid-template-columns: 1fr 2fr; gap:10px">
+            <select id="type"><option value="expense">支出</option><option value="income">收入</option></select>
+            <input type="date" id="date">
+        </div>
+        <input type="number" id="amount" placeholder="金額" inputmode="decimal">
+        <input type="text" id="category" placeholder="分類 (如: 午餐)" list="catList">
+        <datalist id="catList">
+            <option value="膳食"><option value="交通"><option value="購物"><option value="娛樂"><option value="固定開支">
+        </datalist>
+        <button class="btn" onclick="addTransaction()">新增並上傳</button>
+    </div>
+
+    <div class="card">
+        <canvas id="expenseChart"></canvas>
+        <p id="noDataMsg" style="text-align:center; color:#999; display:none">無數據</p>
+    </div>
+
+    <div id="list" class="card" style="padding:0; overflow:hidden;"></div>
+</div>
+
+<script>
+    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+    let chartInstance = null;
+    const SCRIPT_URL_KEY = 'google_script_url';
+
+    // 初始化
+    document.getElementById('date').valueAsDate = new Date();
+    const savedUrl = localStorage.getItem(SCRIPT_URL_KEY);
+    if(savedUrl) document.getElementById('scriptUrl').value = savedUrl;
+    updateUI();
+    
+    // 如果有設定網址，打開網頁時自動下載一次 (可選)
+    // if(savedUrl) loadFromGoogle(); 
+
+    function getCycleDates() {
+        const now = new Date();
+        const d = now.getDate();
+        let start = new Date(now), end = new Date(now);
+        
+        if (d >= 13) {
+            start.setDate(13);
+            end.setMonth(end.getMonth()+1); end.setDate(12);
+        } else {
+            start.setMonth(start.getMonth()-1); start.setDate(13);
+            end.setDate(12);
+        }
+        start.setHours(0,0,0,0); end.setHours(23,59,59,999);
+        return { start, end };
+    }
+
+    function updateUI() {
+        const { start, end } = getCycleDates();
+        const now = new Date(); now.setHours(0,0,0,0);
+        
+        // 更新週期顯示
+        document.getElementById('periodDisplay').innerText = 
+            `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+        
+        const daysLeft = Math.ceil((end - now) / (86400000));
+        document.getElementById('daysLeft').innerText = Math.max(0, daysLeft);
+
+        // 篩選與計算
+        const currentData = transactions.filter(t => {
+            const tDate = new Date(t.date);
+            return tDate >= start && tDate <= end;
+        });
+
+        const inc = currentData.filter(t=>t.type=='income').reduce((s,t)=>s+t.amount,0);
+        const exp = currentData.filter(t=>t.type=='expense').reduce((s,t)=>s+t.amount,0);
+        const bal = inc - exp;
+        
+        document.getElementById('totalIncome').innerText = `$${inc.toFixed(1)}`;
+        document.getElementById('totalExpense').innerText = `$${exp.toFixed(1)}`;
+        document.getElementById('balance').innerText = `$${bal.toFixed(1)}`;
+        document.getElementById('dailyBudget').innerText = daysLeft > 0 ? `$${(bal/daysLeft).toFixed(1)}` : '$0';
+
+        renderList(currentData);
+        renderChart(currentData);
+    }
+
+    function renderList(data) {
+        const list = document.getElementById('list');
+        list.innerHTML = '';
+        data.sort((a,b) => new Date(b.date) - new Date(a.date));
+        
+        data.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerHTML = `
+                <div>
+                    <div style="font-weight:bold">${t.category}</div>
+                    <div style="font-size:0.8rem; color:#888">${t.date}</div>
+                </div>
+                <div style="display:flex; align-items:center">
+                    <span class="${t.type}">${t.type=='income'?'+':'-'}$${t.amount}</span>
+                    <span class="del-btn" onclick="deleteTx(${t.id})">❌</span>
+                </div>`;
+            list.appendChild(div);
+        });
+    }
+
+    // 核心功能：新增
+    async function addTransaction() {
+        const amt = parseFloat(document.getElementById('amount').value);
+        const cat = document.getElementById('category').value;
+        const date = document.getElementById('date').value;
+        const type = document.getElementById('type').value;
+
+        if(!amt || !cat || !date) return alert('請輸入完整資料');
+
+        transactions.push({ id: Date.now(), type, date, amount: amt, category: cat });
+        saveLocal();
+        updateUI();
+        
+        // 清空輸入
+        document.getElementById('amount').value = '';
+        document.getElementById('category').value = '';
+
+        // 自動上傳
+        await saveToGoogle();
+    }
+
+    // 核心功能：刪除
+    async function deleteTx(id) {
+        if(!confirm('刪除此紀錄？')) return;
+        transactions = transactions.filter(t => t.id !== id);
+        saveLocal();
+        updateUI();
+        await saveToGoogle();
+    }
+
+    function saveLocal() {
+        localStorage.setItem('transactions', JSON.stringify(transactions));
+    }
+
+    // --- Google Sheet 整合 ---
+
+    function getApiUrl() {
+        return document.getElementById('scriptUrl').value.trim();
+    }
+
+    function saveUrl() {
+        localStorage.setItem(SCRIPT_URL_KEY, getApiUrl());
+        alert('網址已儲存');
+    }
+
+    function toggleSettings() {
+        const el = document.getElementById('settingsArea');
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function setStatus(msg, isLoading=false) {
+        document.getElementById('statusText').innerText = msg;
+        document.getElementById('loadingIcon').style.display = isLoading ? 'inline' : 'none';
+        document.body.style.pointerEvents = isLoading ? 'none' : 'auto'; // 防止重複點擊
+    }
+
+    async function loadFromGoogle() {
+        const url = getApiUrl();
+        if(!url) return alert('請先在設定中輸入 Google Script 網址');
+
+        setStatus('正在從 Google 下載...', true);
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            transactions = data; // 覆蓋本地資料
+            saveLocal();
+            updateUI();
+            setStatus('同步完成 ✅');
+        } catch(e) {
+            console.error(e);
+            setStatus('下載失敗，請檢查網址或網絡 ❌');
+        }
+    }
+
+    async function saveToGoogle() {
+        const url = getApiUrl();
+        if(!url) {
+            setStatus('未設定網址，僅儲存於本機');
+            return;
+        }
+
+        setStatus('正在上傳到 Google...', true);
+        try {
+            // 使用 Beacon 或 text/plain 避免 CORS 預檢 (Simple Request)
+            const res = await fetch(url, {
+                method: 'POST',
+                body: JSON.stringify(transactions)
+            });
+            const result = await res.json();
+            if(result.result === 'success') {
+                setStatus('已上傳到 Google ✅');
+            } else {
+                setStatus('上傳錯誤 ❌');
+            }
+        } catch(e) {
+            console.error(e);
+            setStatus('連線失敗 ❌');
+        }
+    }
+
+    // --- Chart.js 圖表 ---
+    function renderChart(data) {
+        const ctx = document.getElementById('expenseChart');
+        const expData = data.filter(t => t.type === 'expense');
+        
+        if(expData.length === 0) {
+            ctx.style.display = 'none';
+            document.getElementById('noDataMsg').style.display = 'block';
+            return;
+        }
+        ctx.style.display = 'block';
+        document.getElementById('noDataMsg').style.display = 'none';
+
+        const cats = {};
+        expData.forEach(t => cats[t.category] = (cats[t.category]||0) + t.amount);
+
+        if(chartInstance) chartInstance.destroy();
+        
+        chartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(cats),
+                datasets: [{
+                    data: Object.values(cats),
+                    backgroundColor: ['#ef4444','#f59e0b','#10b981','#3b82f6','#6366f1','#8b5cf6','#ec4899']
+                }]
+            },
+            options: { plugins: { legend: { position: 'right' } } }
+        });
+    }
+</script>
+</body>
+</html>
