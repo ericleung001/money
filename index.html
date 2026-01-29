@@ -46,7 +46,7 @@
 <body>
 
 <div class="container">
-    <h2 style="text-align:center">☁️ 一個月制記帳 (自動同步)</h2>
+    <h2 style="text-align:center">☁️ 13日制記帳 (自動同步)</h2>
     
     <div class="status-bar">
         <span id="statusText">準備就緒</span>
@@ -114,7 +114,6 @@
 
 <script>
     // --- 用戶專屬設定 ---
-    // 這裡已經固定了你的 Google Script 網址
     const API_URL = "https://script.google.com/macros/s/AKfycbxgchVQcYddNaTR8hbVF2cr2CMJRvOHP2BMUKETFSHVVPPcsMl3v5JoCplYo1LirZkP/exec";
 
     let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
@@ -122,24 +121,33 @@
 
     // 初始化
     document.getElementById('date').valueAsDate = new Date();
-    
-    // 啟動時自動嘗試下載一次最新資料
     loadFromGoogle(); 
     updateUI();
 
+    // 優化後的日期週期計算 (13日 ~ 下月12日)
     function getCycleDates() {
         const now = new Date();
-        const d = now.getDate();
-        let start = new Date(now), end = new Date(now);
-        
-        if (d >= 13) {
-            start.setDate(13);
-            end.setMonth(end.getMonth()+1); end.setDate(12);
-        } else {
-            start.setMonth(start.getMonth()-1); start.setDate(13);
-            end.setDate(12);
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth(); // 0 是 1月, 11 是 12月
+        const currentDay = now.getDate();
+
+        let start, end;
+
+        // 如果今天是 13 號或之後 -> 週期是 本月13日 到 下月12日
+        if (currentDay >= 13) {
+            start = new Date(currentYear, currentMonth, 13);
+            end = new Date(currentYear, currentMonth + 1, 12);
+        } 
+        // 如果今天是 13 號之前 -> 週期是 上月13日 到 本月12日
+        else {
+            start = new Date(currentYear, currentMonth - 1, 13);
+            end = new Date(currentYear, currentMonth, 12);
         }
-        start.setHours(0,0,0,0); end.setHours(23,59,59,999);
+
+        // 設定具體時間，確保範圍涵蓋全天
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+
         return { start, end };
     }
 
@@ -157,7 +165,10 @@
         // 篩選與計算
         const currentData = transactions.filter(t => {
             const tDate = new Date(t.date);
-            return tDate >= start && tDate <= end;
+            // 修正：確保日期比較是準確的 (將交易時間設為00:00進行比較)
+            const tDateObj = new Date(tDate);
+            tDateObj.setHours(0,0,0,0);
+            return tDateObj >= start && tDateObj <= end; // 使用 end (原本的 endDate 已包含當天 23:59)
         });
 
         const inc = currentData.filter(t=>t.type=='income').reduce((s,t)=>s+t.amount,0);
@@ -194,7 +205,6 @@
         });
     }
 
-    // 核心功能：新增
     async function addTransaction() {
         const amt = parseFloat(document.getElementById('amount').value);
         const cat = document.getElementById('category').value;
@@ -208,13 +218,11 @@
         updateUI();
         
         document.getElementById('amount').value = '';
-        // 重置分類為預設值
         document.getElementById('category').value = '';
 
         await saveToGoogle();
     }
 
-    // 核心功能：刪除
     async function deleteTx(id) {
         if(!confirm('刪除此紀錄？')) return;
         transactions = transactions.filter(t => t.id !== id);
@@ -238,7 +246,7 @@
         try {
             const res = await fetch(API_URL);
             const data = await res.json();
-            transactions = data; // 覆蓋本地資料
+            transactions = data;
             saveLocal();
             updateUI();
             setStatus('同步完成 ✅');
@@ -267,7 +275,6 @@
         }
     }
 
-    // --- Chart.js 圖表 ---
     function renderChart(data) {
         const ctx = document.getElementById('expenseChart');
         const expData = data.filter(t => t.type === 'expense');
